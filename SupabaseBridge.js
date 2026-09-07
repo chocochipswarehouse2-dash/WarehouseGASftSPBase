@@ -444,7 +444,7 @@ function syncWmsUsersToSupabase() {
       rowsToInsert.push({
         username: username,
         password: password,
-        akses: akses
+        role: akses
       });
     }
   }

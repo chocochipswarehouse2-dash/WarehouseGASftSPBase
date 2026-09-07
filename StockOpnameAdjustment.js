@@ -40,7 +40,9 @@
  * (karena fitur ini bisa mengubah angka stok beneran)
  ************************************************/
 function wmsBisaAksesStockOpname(akses) {
-  return akses === "All";
+  if (!akses) return false;
+  const roles = String(akses).split(',').map(function(r) { return r.trim().toLowerCase(); });
+  return roles.includes("all") || roles.includes("superadmin") || roles.includes("stock opname");
 }
 
 /************************************************

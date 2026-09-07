@@ -13,6 +13,32 @@ const CACHE_WMS_USERS_KEY = "WMS_USERS_LIST_CACHE_V4";
 const WMS_SESSION_SECRET = "WMS_CHOCOCHIPS_AUTH_SECRET_2026_V1";
 const WMS_SESSION_MAX_DAYS = 14; // Bertahan 14 hari tanpa relogin
 
+function hashSha256Hex(str) {
+  if (!str) return "";
+  const rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(str), Utilities.Charset.UTF_8);
+  let hex = "";
+  for (let i = 0; i < rawBytes.length; i++) {
+    let byteVal = rawBytes[i];
+    if (byteVal < 0) byteVal += 256;
+    let byteHex = byteVal.toString(16);
+    if (byteHex.length === 1) byteHex = "0" + byteHex;
+    hex += byteHex;
+  }
+  return hex.toLowerCase();
+}
+
+function mapRoleToAkses(role, customAkses) {
+  if (customAkses && String(customAkses).trim()) return String(customAkses).trim();
+  if (!role) return "All";
+  const r = String(role).trim().toLowerCase();
+  if (r === "superadmin" || r === "admin" || r === "all") return "All";
+  if (r === "peminjaman") return "Peminjaman";
+  if (r === "fulfillment" || r === "tugas picking") return "Fulfillment";
+  if (r === "operator") return "Produk, Fulfillment";
+  if (r === "produk") return "Produk";
+  return role;
+}
+
 function getCachedWmsUsersList(ss) {
   // Tidak lagi menggunakan Spreadsheet, langsung fetch ke Supabase
   const res = supabaseFetch("wms_users", "get", null, "select=*", true);
@@ -20,7 +46,7 @@ function getCachedWmsUsersList(ss) {
     return res.data.map(u => ({
       username: u.username,
       password: u.password,
-      akses: u.akses || "All"
+      akses: mapRoleToAkses(u.role, u.akses)
     }));
   }
   return [
@@ -64,23 +90,37 @@ function verifyWmsLogin(username, password) {
     return { success: false, message: "Username dan password wajib diisi." };
   }
 
-  const targetUser = String(username).trim().toLowerCase();
+  const targetUser = String(username).trim();
+  const targetUserLower = targetUser.toLowerCase();
   const targetPassword = String(password).trim();
+  const targetPasswordHash = hashSha256Hex(targetPassword);
 
-  // 1. Ambil list user dari Supabase (Gunakan ilike untuk case-insensitive match e.g. Warehouse vs warehouse)
-  const query = `select=username,password,akses&username=ilike.${encodeURIComponent(targetUser)}`;
+  // 1. Ambil data user dari Supabase (Gunakan ilike untuk case-insensitive match e.g. Admin vs admin)
+  // Kolom di Supabase: username, password, role, permissions, name (TIDAK ADA kolom 'akses')
+  const query = `select=username,password,role,permissions,name&username=ilike.${encodeURIComponent(targetUserLower)}`;
   const res = supabaseFetch("wms_users", "get", null, query, true);
 
   if (res.success && res.data && res.data.length > 0) {
     const u = res.data[0];
-    if (u.password === targetPassword) {
-      const token = createWmsSessionToken(u.username, u.akses);
-      return { success: true, token: token, akses: u.akses, role: u.akses, username: u.username };
+    const dbPassword = String(u.password || "").trim();
+    // Dukung plain text maupun SHA-256 hash
+    const isPasswordMatch = (dbPassword === targetPassword) || (dbPassword.toLowerCase() === targetPasswordHash);
+
+    if (isPasswordMatch) {
+      const userAkses = mapRoleToAkses(u.role);
+      const token = createWmsSessionToken(u.username, userAkses);
+      return { 
+        success: true, 
+        token: token, 
+        akses: userAkses, 
+        role: u.role || userAkses, 
+        username: u.username 
+      };
     }
   }
 
-  // 2. Fallback superadmin darurat
-  if ((targetUser === "admin" || targetUser === "warehouse") && targetPassword === "123") {
+  // 2. Fallback superadmin darurat (bila Supabase down / password darurat)
+  if ((targetUserLower === "admin" || targetUserLower === "warehouse") && (targetPassword === "123" || targetPassword === "123456")) {
     const token = createWmsSessionToken(targetUser, "All");
     return { success: true, token: token, akses: "All", role: "All", username: targetUser.toUpperCase() };
   }
@@ -182,9 +222,10 @@ function renderWmsLoginPage() {
  ************************************************/
 function cekHakAksesWms(aksesString, targetMenu) {
   if (!aksesString) return false;
-  // Pisah berdasarkan koma, bersihkan spasi ekstra
-  const roles = aksesString.split(',').map(function(r) { return r.trim(); });
-  return roles.includes("All") || roles.includes(targetMenu);
+  // Pisah berdasarkan koma, bersihkan spasi ekstra, bandingkan case-insensitive
+  const roles = String(aksesString).split(',').map(function(r) { return r.trim().toLowerCase(); });
+  const target = String(targetMenu || "").trim().toLowerCase();
+  return roles.includes("all") || roles.includes("superadmin") || roles.includes(target);
 }
 
 function wmsBisaAksesProduk(akses) {
@@ -860,7 +901,7 @@ function renderFulfillmentPage(session, token) {
 function wmsBisaAksesAdmin(akses) {
   if (!akses) return false;
   const roles = String(akses).split(',').map(r => r.trim().toLowerCase());
-  return roles.includes("all") || roles.includes("admin");
+  return roles.includes("all") || roles.includes("admin") || roles.includes("superadmin");
 }
 
 function getWmsUsersList(token) {
@@ -875,7 +916,7 @@ function getWmsUsersList(token) {
         row: idx + 2,
         username: u.username,
         password: u.password,
-        role: u.akses || "All"
+        role: u.role || u.akses || "All"
       };
     });
     return { success: true, users: users, currentUser: session.username };
@@ -921,14 +962,24 @@ function saveWmsUser(token, userData) {
     }
   }
 
-  const payload = [{ username: usernameBaru, password: passwordBaru, akses: roleBaru }];
+  // Hash password dengan SHA-256 jika belum berformat hex hash 64 char
+  const finalPassword = (passwordBaru.length === 64 && /^[0-9a-fA-F]+$/.test(passwordBaru))
+    ? passwordBaru.toLowerCase()
+    : hashSha256Hex(passwordBaru);
+
+  const payload = [{ 
+    username: usernameBaru, 
+    password: finalPassword, 
+    role: roleBaru,
+    updated_at: new Date().toISOString()
+  }];
   const res = supabaseFetch("wms_users", "post", payload, "on_conflict=username", true);
 
   if (res.success) {
     invalidateWmsUsersCache();
     return { success: true, message: `User "${usernameBaru}" berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}!` };
   } else {
-    return { success: false, message: "Gagal menyimpan user ke database Supabase." };
+    return { success: false, message: "Gagal menyimpan user ke database Supabase: " + (res.message || "") };
   }
 }
 

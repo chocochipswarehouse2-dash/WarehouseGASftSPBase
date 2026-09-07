@@ -1,8 +1,23 @@
 # LOG AKTIVITAS PERUBAHAN SISTEM GAS WMS MINI
-> **Tanggal:** 20 Agustus 2026  
+> **Tanggal:** 7 September 2026  
 > **Script ID:** `1kxPONxg5JyJKzrHg2EApt9K8c9nK6hccygtny2jf69JtgKIoVauTgDEU`  
-> **Deploy ID:** `AKfycbyFxfqoqJhrPJOioPxnmbGJTjTTAwli6b87lgOQCPFDOoCVt5EJg3NHZT56zI52rM63` (@811)  
-> **Dokumentasi:** Catatan lengkap perbaikan UI responsif seluler Inventory (Card View), perbaikan bug, mitigasi race condition webhook, dan standardisasi UI.
+> **Deploy ID:** `AKfycbyFxfqoqJhrPJOioPxnmbGJTjTTAwli6b87lgOQCPFDOoCVt5EJg3NHZT56zI52rM63` (@868)  
+> **Dokumentasi:** Perbaikan total autentikasi login Supabase, penyesuaian query kolom database (menghapus kolom non-existent `akses`), penambahan verifikasi hash SHA-256 untuk password terenkripsi, dan pemetaan role `Superadmin`/`Operator`.
+
+## [2026-09-07] Deploy @868 - PERBAIKAN LOGIN GAGAL / SALAH PASSWORD TERUS
+### Problem:
+- User tidak dapat login ke sistem WMS dan terus-menerus muncul pesan error: *"Username atau password salah."*
+- **Penyebab 1 (Kolom Supabase Tidak Ada):** Pada [`WmsAuth.js`](file:///d:/Antigravity/GAS%20WMS%20Mini/WmsAuth.js), query Supabase memanggil `select=username,password,akses`. Pada tabel database Supabase `wms_users`, kolom tersebut bernama `role`, bukan `akses`. Akibatnya request selalu ditolak dengan HTTP 400 (`column wms_users.akses does not exist`) sehingga login via Supabase selalu gagal.
+- **Penyebab 2 (Password SHA-256 Hash):** Seluruh password pengguna di tabel `wms_users` tersimpan dalam format hash SHA-256 (64 hex char, e.g. `8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92` untuk `123456`), sedangkan backend hanya melakukan perbandingan plain-text `u.password === targetPassword`.
+- **Penyebab 3 (Hak Akses Superadmin/Operator):** Role pengguna di Supabase bertipe `Superadmin`, `Operator`, dll., belum terpetakan ke permission internal GAS WMS.
+
+### Solusi & Perubahan:
+1. **Query Kolom Valid di [`WmsAuth.js`](file:///d:/Antigravity/GAS%20WMS%20Mini/WmsAuth.js):** Memperbaiki query menjadi `select=username,password,role,permissions,name` sesuai skema tabel Supabase yang sebenarnya.
+2. **Dukungan Hashing SHA-256:** Menambahkan fungsi `hashSha256Hex` di backend GAS dan memvalidasi `(dbPassword === targetPassword) || (dbPassword.toLowerCase() === targetPasswordHash)`.
+3. **Pemetaan Role Otomatis (`mapRoleToAkses`):** Role `Superadmin` dipetakan memiliki hak akses `"All"`, `Operator` ke `"Produk, Fulfillment"`, `Peminjaman` ke `"Peminjaman"`.
+4. **Case-Insensitive Permission Checks:** Memperbarui `cekHakAksesWms`, `wmsBisaAksesAdmin`, dan `wmsBisaAksesStockOpname` di [`StockOpnameAdjustment.js`](file:///d:/Antigravity/GAS%20WMS%20Mini/StockOpnameAdjustment.js).
+5. **Update User Management:** Menyimpan password ber-hash SHA-256 dan kolom `role` pada [`ViewSetting.html`](file:///d:/Antigravity/GAS%20WMS%20Mini/ViewSetting.html) dan `saveWmsUser`.
+
 
 ## 0. PERBAIKAN BUG LOGIN LOOP (SESI MEMULIHKAN SESI MASUK MACET)
 > **Tanggal:** 21 Agustus 2026

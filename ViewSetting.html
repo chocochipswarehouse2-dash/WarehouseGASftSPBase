@@ -280,14 +280,17 @@
       let border = 'var(--border)';
       let icon = '🔖';
 
-      if (r === 'All') { 
+      const rLower = r.toLowerCase();
+      if (rLower === 'all' || rLower === 'superadmin' || rLower === 'admin') { 
         bg = 'rgba(245, 158, 11, 0.12)'; color = '#d97706'; border = 'rgba(245, 158, 11, 0.3)'; icon = '👑';
-      } else if (r === 'Produk') { 
+      } else if (rLower === 'produk') { 
         bg = 'rgba(59, 130, 246, 0.12)'; color = '#2563eb'; border = 'rgba(59, 130, 246, 0.3)'; icon = '📦';
-      } else if (r === 'Peminjaman') { 
+      } else if (rLower === 'peminjaman') { 
         bg = 'rgba(168, 85, 247, 0.12)'; color = '#9333ea'; border = 'rgba(168, 85, 247, 0.3)'; icon = '📝';
-      } else if (r === 'Fulfillment') { 
+      } else if (rLower === 'fulfillment' || rLower === 'tugas picking') { 
         bg = 'rgba(16, 185, 129, 0.12)'; color = '#059669'; border = 'rgba(16, 185, 129, 0.3)'; icon = '🚚';
+      } else if (rLower === 'operator') {
+        bg = 'rgba(14, 165, 233, 0.12)'; color = '#0284c7'; border = 'rgba(14, 165, 233, 0.3)'; icon = '👷';
       }
 
       return `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:4px; background:${bg}; color:${color}; border:1px solid ${border};">${icon} ${escapeHtml(r)}</span>`;
@@ -399,7 +402,7 @@
     
     const parts = String(roleStr || 'All').split(',').map(s => s.trim().toLowerCase());
     
-    if (parts.includes('all')) {
+    if (parts.includes('all') || parts.includes('superadmin') || parts.includes('admin')) {
       if (chkAll) chkAll.checked = true;
       subChks.forEach(c => { c.checked = false; c.disabled = true; });
     } else {
