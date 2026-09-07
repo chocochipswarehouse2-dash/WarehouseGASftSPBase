@@ -2172,8 +2172,10 @@
   window.konfirmasiHapusPenerimaan = konfirmasiHapusPenerimaan;
   window.closeHapusPenerimaanModal = closeHapusPenerimaanModal;
   window.eksekusiHapusPenerimaan = eksekusiHapusPenerimaan;
-  window.triggerKameraEdit = triggerKameraEdit;
-  window.triggerGaleriEdit = triggerGaleriEdit;
+  window.triggerKameraEdit = typeof triggerKameraEditItem !== 'undefined' ? triggerKameraEditItem : null;
+  window.triggerGaleriEdit = typeof triggerGaleriEditItem !== 'undefined' ? triggerGaleriEditItem : null;
+  window.triggerKameraEditItem = typeof triggerKameraEditItem !== 'undefined' ? triggerKameraEditItem : null;
+  window.triggerGaleriEditItem = typeof triggerGaleriEditItem !== 'undefined' ? triggerGaleriEditItem : null;
   window.hapusFotoEdit = hapusFotoEdit;
   window.handleDirectPhotoPasteEdit = handleDirectPhotoPasteEdit;
   window.handlePhotoDragOverEdit = handlePhotoDragOverEdit;

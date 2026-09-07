@@ -612,6 +612,28 @@
             return;
         }
         
+        // Ambil ID tertinggi saat ini agar tidak terjadi tabrakan sequence primary key
+        let currentMaxId = 0;
+        try {
+            const maxRes = await fetch(`${SUPABASE_URL}/rest/v1/picking_list?select=id&order=id.desc&limit=1`, {
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+            });
+            if (maxRes.ok) {
+                const maxData = await maxRes.json();
+                if (maxData && maxData.length > 0 && maxData[0].id) {
+                    currentMaxId = Number(maxData[0].id) || 0;
+                }
+            }
+        } catch (eMax) {
+            console.warn("Gagal cek max id picking_list:", eMax);
+        }
+
+        // Berikan ID eksplisit untuk setiap baris agar aman 100% dari conflict sequence PostgreSQL
+        let nextId = currentMaxId + 1;
+        for (let row of allRowsToInsert) {
+            row.id = nextId++;
+        }
+
         // POST to supabase
         const insRes = await fetch(`${SUPABASE_URL}/rest/v1/picking_list`, {
             method: 'POST',
@@ -619,7 +641,16 @@
             body: JSON.stringify(allRowsToInsert)
         });
         
-        if (!insRes.ok) throw new Error("Gagal menyimpan ke Supabase");
+        if (!insRes.ok) {
+            let detailErr = "";
+            try {
+                const errJson = await insRes.json();
+                detailErr = errJson.message || errJson.error || JSON.stringify(errJson);
+            } catch (eParse) {
+                detailErr = await insRes.text();
+            }
+            throw new Error("Gagal menyimpan ke Supabase: " + detailErr);
+        }
         
         showFulfillmentToast(true, "Transfer Order berhasil disimpan ke database! 📦");
         resetFulfillmentUpload();

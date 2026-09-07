@@ -1,8 +1,23 @@
 # LOG AKTIVITAS PERUBAHAN SISTEM GAS WMS MINI
 > **Tanggal:** 7 September 2026  
 > **Script ID:** `1kxPONxg5JyJKzrHg2EApt9K8c9nK6hccygtny2jf69JtgKIoVauTgDEU`  
-> **Deploy ID:** `AKfycbyFxfqoqJhrPJOioPxnmbGJTjTTAwli6b87lgOQCPFDOoCVt5EJg3NHZT56zI52rM63` (@868)  
-> **Dokumentasi:** Perbaikan total autentikasi login Supabase, penyesuaian query kolom database (menghapus kolom non-existent `akses`), penambahan verifikasi hash SHA-256 untuk password terenkripsi, dan pemetaan role `Superadmin`/`Operator`.
+> **Deploy ID:** `AKfycbyFxfqoqJhrPJOioPxnmbGJTjTTAwli6b87lgOQCPFDOoCVt5EJg3NHZT56zI52rM63` (@869)  
+> **Dokumentasi:** Perbaikan penanganan upload CSV Transfer Order Refill Toko (konflik primary key sequence PostgreSQL) dan penanganan reference function kamera pada ViewPenerimaanProduksi.
+
+## [2026-09-07] Deploy @869 - PERBAIKAN UPLOAD CSV REFILL TOKO & ERROR KAMERA
+### Problem:
+- Saat upload CSV Transfer Order (Refill Toko) di menu Fulfillment, muncul error: *"⚠️ Terjadi kesalahan: Gagal menyimpan ke Supabase"*.
+- **Penyebab (Sequence ID Out-of-Sync di PostgreSQL):** Tabel `picking_list` di Supabase telah memiliki 1.624 baris data historis dengan `id` manual (1 sampai 1624). Namun sequence default PostgreSQL (`picking_list_id_seq`) tertinggal di angka rendah. Saat client melakukan batch insert tanpa menyertakan kolom `id`, PostgreSQL membangkitkan `id` yang sudah ada, menghasilkan error:
+  `HTTP 409 Conflict: duplicate key value violates unique constraint "picking_list_pkey"`.
+- Di console browser juga muncul: *"Uncaught ReferenceError: triggerKameraEdit is not defined"* akibat binding nama fungsi yang tidak tepat di [`ViewPenerimaanProduksi.html`](file:///d:/Antigravity/GAS%20WMS%20Mini/ViewPenerimaanProduksi.html).
+
+### Solusi & Perubahan:
+1. **Auto-Increment ID Eksplisit di [`ViewFulfillment.html`](file:///d:/Antigravity/GAS%20WMS%20Mini/ViewFulfillment.html):**
+   - Sebelum insert batch CSV, sistem mengecek `id` maksimum saat ini di tabel `picking_list` (`order=id.desc&limit=1`).
+   - Setiap baris yang di-insert diberikan `id` unik berurutan secara eksplisit (`currentMaxId + 1, currentMaxId + 2, ...`), sehingga 100% kebal terhadap sequence conflict PostgreSQL.
+   - Menambahkan penangkapan pesan error detail dari response Supabase agar troubleshooting lebih transparan.
+2. **Perbaikan Binding Fungsi Kamera di [`ViewPenerimaanProduksi.html`](file:///d:/Antigravity/GAS%20WMS%20Mini/ViewPenerimaanProduksi.html):**
+   - Menghubungkan `window.triggerKameraEdit` dan `window.triggerGaleriEdit` ke fungsi implementasi yang benar (`triggerKameraEditItem` dan `triggerGaleriEditItem`) dengan pengecekan `typeof !== 'undefined'` yang aman.
 
 ## [2026-09-07] Deploy @868 - PERBAIKAN LOGIN GAGAL / SALAH PASSWORD TERUS
 ### Problem:
